@@ -254,8 +254,8 @@ function sortShelf(){var sh=$("shelf"),o={full:0,use:1,empty:2},k=[].slice.call(
   var tb=$("tabs"),od={all:0,full:1,use:2,empty:3};[].slice.call(tb.querySelectorAll("button[data-f]")).sort(function(a,b){return od[a.getAttribute("data-f")]-od[b.getAttribute("data-f")]}).forEach(function(x){tb.appendChild(x)})}
 var _render=render;render=function(){_render();renameUI();sortShelf();renderIssues()};
 /* always up to date (added): live updates + refresh when the app is opened again */
-var _load=load,loading=false,again=false,rtCh=null,rtT=null,pend=null,lastTouch=0,started=false;
-load=async function(){if(loading){again=true;return}loading=true;try{await _load();await loadExtra();ensureLive()}finally{loading=false}if(again){again=false;load()}};
+var rtOK=false,lastOK=0,_load=load,loading=false,again=false,rtCh=null,rtT=null,pend=null,lastTouch=0,started=false;
+load=async function(){if(loading){again=true;return}loading=true;try{await _load();await loadExtra();lastOK=Date.now();ensureLive();stat()}finally{loading=false}if(again){again=false;load()}};
 function touch(e){var t=e.target;if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))lastTouch=Date.now()}
 ["focusin","input","change","keydown"].forEach(function(n){document.addEventListener(n,touch,true)});
 function busy(){var a=document.activeElement;return !!edit||!!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&Date.now()-lastTouch<12000)}
@@ -264,7 +264,9 @@ function ensureLive(){if(started)return;started=true;
   setInterval(refresh,10000);
   document.addEventListener("visibilitychange",function(){if(!document.hidden)refresh()});
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
-  try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe()}catch(e){}}
+  try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
+(function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 6 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -290,6 +292,19 @@ $("imail").onclick=async function(){
   if(r.error)say("Could not send. Check that the email setup is finished.",false);
   else if(r.data===true)say("Report sent. Check the email inbox in a minute.",true);
   else say("Email is not set up yet. Finish the setup steps first.",false)};
+
+/* usage report: add current stock and a clear note when there is no activity (added) */
+function stockBlock(){
+  var sts=ST.filter(function(x){return inSel({station_id:x.id})}),d=repData();
+  var row=function(name,cs){var n=function(k){return cs.filter(function(c){return c.status===k}).length};return '<tr><td>'+esc(name)+'</td><td>'+n("full")+'</td><td>'+n("use")+'</td><td>'+n("empty")+'</td><td>'+cs.length+'</td></tr>'};
+  var rows=sts.map(function(x){return row(x.name,CT.filter(function(c){return c.station_id===x.id}))}).join("");
+  if(sts.length>1)rows+=row("Total",CT.filter(inSel));
+  return '<div data-stock="1"><h2 style="font-size:17px">Current stock now</h2><table class="cmp"><tr><th>Station</th><th>Naa pay sulod</th><th>Partial</th><th>Way sulod</th><th>Total</th></tr>'+rows+'</table>'
+    +'<h2 style="font-size:17px">Activity in this period</h2>'+(d.ev.length?'':'<p class="empty-msg" style="padding:0 0 8px">No activity in this period yet. Activity is counted when someone presses Start using, Mark empty, or Refilled. Adding new jars does not count.</p>')+'</div>'}
+var repObs=new MutationObserver(function(){var r=$("rep");repObs.disconnect();
+  try{if(!r.querySelector("[data-stock]"))r.insertAdjacentHTML("afterbegin",stockBlock())}catch(e){}
+  repObs.observe(r,{childList:true})});
+repObs.observe($("rep"),{childList:true});
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
