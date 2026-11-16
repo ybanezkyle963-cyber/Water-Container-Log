@@ -95,7 +95,7 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
   <div class="err" id="imsg"></div>
   <ul class="log" id="ilist" style="margin-top:6px"></ul>
   <h2 style="margin-top:18px;font-size:17px">Email automatically when</h2>
-  <div class="row"><label class="chk"><input type="checkbox" id="pf_on_issue"> a problem or damage is reported</label><label class="chk"><input type="checkbox" id="pf_on_half"> a container becomes half used (in use)</label><label class="chk"><input type="checkbox" id="pf_on_empty"> a container is empty</label></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="pf_on_issue"> a problem or damage is reported</label><label class="chk"><input type="checkbox" id="pf_on_half"> a container becomes Partial (half used)</label><label class="chk"><input type="checkbox" id="pf_on_empty"> a container is Way sulod (empty)</label></div>
   <div class="row" style="margin-top:12px"><button class="ghost" id="imail">Email report now</button></div>
 </section>
 
@@ -233,8 +233,27 @@ function renderIssues(){
   $("issueAlert").innerHTML=op.length?'<div class="alert">'+op.length+' open station problem'+(op.length===1?'':'s')+'. See "Station issues" below.</div>':"";
   $("ilist").innerHTML=op.concat(done).map(function(i){var fx=i.status==="fixed";
     return '<li><span><b class="tag'+(fx?' ok':'')+'">'+(fx?'Fixed':i.kind==="damage"?'Damage':'Issue')+'</b>'+(sel==="all"?esc(sName(i.station_id))+' · ':'')+esc(i.note||"(no note)")+(i.user_name?' · '+esc(i.user_name):'')+(fx&&i.fixed_by?' (fixed by '+esc(i.fixed_by)+')':'')+'</span><span><time>'+fmt(i.created_at)+'</time>'+(fx?'':' <button class="ghost" data-fix="'+i.id+'">Mark fixed</button>')+'</span></li>'}).join("")||'<li class="empty-msg">No station problems reported.</li>'}
-var _render=render;render=function(){_render();renderIssues()};
-var _load=load;load=async function(){await _load();await loadExtra()};
+/* status names (added): rename only the words shown on screen */
+LBL.full="Naa pay sulod";LBL.use="Partial";LBL.empty="Way sulod";
+var TN={all:"All",use:"Partial",full:"Naa pay sulod",empty:"Way sulod"};
+(function(){var a=document.querySelector(".big.use>span");if(a)a.textContent="Partial";
+  if($("nFull")&&$("nFull").nextSibling)$("nFull").nextSibling.textContent=" naa pay sulod";
+  if($("nEmpty")&&$("nEmpty").nextSibling)$("nEmpty").nextSibling.textContent=" way sulod";
+  [].forEach.call($("st").options,function(o){if(TN[o.value])o.textContent=TN[o.value]})})();
+function renameUI(){[].forEach.call($("tabs").querySelectorAll("button[data-f]"),function(b){var m=b.textContent.match(/\((\d+)\)/);b.textContent=TN[b.getAttribute("data-f")]+(m?" ("+m[1]+")":"")})}
+var _render=render;render=function(){_render();renameUI();renderIssues()};
+/* always up to date (added): live updates + refresh when the app is opened again */
+var _load=load,loading=false,again=false,rtCh=null,rtT=null,pend=null,lastTouch=0,started=false;
+load=async function(){if(loading){again=true;return}loading=true;try{await _load();await loadExtra();ensureLive()}finally{loading=false}if(again){again=false;load()}};
+function touch(e){var t=e.target;if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))lastTouch=Date.now()}
+["focusin","input","change","keydown"].forEach(function(n){document.addEventListener(n,touch,true)});
+function busy(){var a=document.activeElement;return !!edit||!!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&Date.now()-lastTouch<12000)}
+function refresh(){clearTimeout(pend);if(!UID||$("app").hidden)return;if(busy()){pend=setTimeout(refresh,3000);return}load()}
+function ensureLive(){if(started)return;started=true;
+  setInterval(refresh,10000);
+  document.addEventListener("visibilitychange",function(){if(!document.hidden)refresh()});
+  window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
+  try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe()}catch(e){}}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
