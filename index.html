@@ -273,7 +273,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 9 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 10 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -301,13 +301,14 @@ $("imail").onclick=async function(){
   else say("Email is not set up yet. Finish the setup steps first.",false)};
 
 /* usage report: add current stock and a clear note when there is no activity (added) */
-var ACT_H=["Added jars","Started using","Finished","Refilled","Water used"],CL=["add","use","empty","full","water","idle"];
+var ACT_H=["Added jars","Started using","Finished","Refilled","Water used"],CL=["full","use","empty","add","use","empty","full","water","idle"];
 function cnt2(a,t){return a.filter(function(l){return l.to_status===t&&l.note!=="Added"}).length}
 function addN(a){return a.filter(function(l){return l.note==="Added"}).length}
 function actRow(label,a){return [label,addN(a),cnt2(a,"use"),cnt2(a,"empty"),cnt2(a,"full"),Math.round(liters(a))+" L"]}
 function actList(d){var ids={},cs=CT.filter(inSel);d.ev.filter(notAdded).forEach(function(l){ids[l.container_id]=1});
   var act=cs.filter(function(c){return ids[c.id]}).length;
-  return [["Jars added",addN(d.ev),"New jars put into the list"],["Started using",cnt2(d.ev,"use"),"Opened, now Partial"],["Finished",cnt2(d.ev,"empty"),"Ran out, now Way sulod"],["Refilled",cnt2(d.ev,"full"),"Filled again, now Naa pay sulod"],["Water used",d.L+" L","Estimate: finished jars × jar size"],["Jars with no activity",cs.length-act,"Out of "+cs.length+" jars in the list"]]}
+  var nw=function(k){return cs.filter(function(c){return c.status===k}).length};
+  return [["Naa pay sulod (now)",nw("full"),"Full jars, not opened yet"],["Partial (now)",nw("use"),"Jars being used"],["Way sulod (now)",nw("empty"),"Empty jars, ready to refill"],["Jars added",addN(d.ev),"New jars put into the list"],["Started using",cnt2(d.ev,"use"),"Opened, now Partial"],["Finished",cnt2(d.ev,"empty"),"Ran out, now Way sulod"],["Refilled",cnt2(d.ev,"full"),"Filled again, now Naa pay sulod"],["Water used",d.L+" L","Estimate: finished jars × jar size"],["Jars with no activity",cs.length-act,"Out of "+cs.length+" jars in the list"]]}
 function stationAct(d){var sc=ST.filter(function(x){return inSel({station_id:x.id})}),rows=sc.map(function(x){return pRow(actRow(esc(x.name),d.ev.filter(function(l){return l.station_id===x.id})))});
   if(sc.length>1)rows.push(pRow(actRow("<b>Total</b>",d.ev)));return pTable(["Station"].concat(ACT_H),rows,"No stations.")}
 function periodAct(d){if(d.m==="day")return "";var kk=d.m==="year"?"month":"day",g={};d.ev.forEach(function(l){var x=dkey(T(l),kk);(g[x]=g[x]||[]).push(l)});
