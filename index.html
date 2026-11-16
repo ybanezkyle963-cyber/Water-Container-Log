@@ -266,7 +266,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 6 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 7 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -300,11 +300,24 @@ function stockBlock(){
   var rows=sts.map(function(x){return row(x.name,CT.filter(function(c){return c.station_id===x.id}))}).join("");
   if(sts.length>1)rows+=row("Total",CT.filter(inSel));
   return '<div data-stock="1"><h2 style="font-size:17px">Current stock now</h2><table class="cmp"><tr><th>Station</th><th>Naa pay sulod</th><th>Partial</th><th>Way sulod</th><th>Total</th></tr>'+rows+'</table>'
-    +'<h2 style="font-size:17px">Activity in this period</h2>'+(d.ev.length?'':'<p class="empty-msg" style="padding:0 0 8px">No activity in this period yet. Activity is counted when someone presses Start using, Mark empty, or Refilled. Adding new jars does not count.</p>')+'</div>'}
+    +'<h2 style="font-size:17px">Activity in this period</h2>'+(d.ev.length?'':'<p class="empty-msg" style="padding:0 0 8px">No activity in this period yet. Activity is counted when someone adds jars or presses Start using, Mark empty, or Refilled.</p>')+'</div>'}
 var repObs=new MutationObserver(function(){var r=$("rep");repObs.disconnect();
   try{if(!r.querySelector("[data-stock]"))r.insertAdjacentHTML("afterbegin",stockBlock())}catch(e){}
   repObs.observe(r,{childList:true})});
 repObs.observe($("rep"),{childList:true});
+
+/* adding jars is counted in the reports too (added) */
+function notAdded(l){return l.note!=="Added"}
+var _liters=liters;liters=function(ev){return _liters(ev.filter(notAdded))};
+var _rate=rate;rate=function(){var keep=LG;LG=keep.filter(notAdded);try{return _rate()}finally{LG=keep}};
+var _add=$("add").onclick;
+$("add").onclick=async function(){
+  var sid=+$("ast").value,mx=0;if(!sid)return _add.call(this);
+  try{var m=await sb.from("containers").select("num").eq("station_id",sid).order("num",{ascending:false}).limit(1);mx=m.data&&m.data[0]?m.data[0].num:0}catch(e){}
+  await _add.call(this);
+  try{var n=await sb.from("containers").select("*").eq("station_id",sid).gt("num",mx);
+    if(n.data&&n.data.length){var r=await sb.from("logs").insert(n.data.map(function(c){return {station_id:c.station_id,container_id:c.id,container_name:c.name,from_status:c.status,to_status:c.status,at:c.status_at,user_id:UID,user_name:ME,note:"Added"}}));
+      if(r.error)$("msg").textContent="Jars were added, but could not be counted in the report.";load()}}catch(e){}};
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
