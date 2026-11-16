@@ -50,6 +50,8 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
 .big.fullc b{color:var(--full)}.big.emptyc b{color:var(--empty)}
 .big.fullc{border-top:4px solid var(--full)}.big.use{border-top:4px solid var(--use)}.big.emptyc{border-top:4px dashed var(--empty)}
 @media (max-width:520px){.hero{gap:8px}.big{padding:12px 10px}.big b{font-size:clamp(34px,11vw,48px)}.big span{font-size:14px}}
+@page{size:A4;margin:12mm}
+@media print{#print{font-size:12px}#print h1{margin:0 0 4px}#print h2{font-size:15px;margin:16px 0 6px;break-after:avoid}#print .cmp{margin:4px 0 10px}#print .cmp th{background:#e8e8e8!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}#print thead{display:table-header-group}#print tr{break-inside:avoid}#print .pb{break-before:page}#print .sig{display:flex;gap:40px;margin-top:36px}#print .sig div{flex:1;border-top:1px solid #000;padding-top:4px}}
 </style>
 </head>
 <body>
@@ -266,7 +268,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 7 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 8 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -318,6 +320,34 @@ $("add").onclick=async function(){
   try{var n=await sb.from("containers").select("*").eq("station_id",sid).gt("num",mx);
     if(n.data&&n.data.length){var r=await sb.from("logs").insert(n.data.map(function(c){return {station_id:c.station_id,container_id:c.id,container_name:c.name,from_status:c.status,to_status:c.status,at:c.status_at,user_id:UID,user_name:ME,note:"Added"}}));
       if(r.error)$("msg").textContent="Jars were added, but could not be counted in the report.";load()}}catch(e){}};
+
+/* complete printable report (added) */
+function pTable(h,rows,empty){return '<table class="cmp"><thead><tr>'+h.map(function(x){return '<th>'+x+'</th>'}).join("")+'</tr></thead><tbody>'+(rows.length?rows.join(""):'<tr><td colspan="'+h.length+'">'+empty+'</td></tr>')+'</tbody></table>'}
+function pRow(a){return '<tr>'+a.map(function(x){return '<td>'+x+'</td>'}).join("")+'</tr>'}
+$("pr").onclick=function(){
+  var d=repData(),scope=ST.filter(function(x){return inSel({station_id:x.id})}),cs=CT.filter(inSel),
+  n=function(a,k){return a.filter(function(c){return c.status===k}).length},
+  cnt=function(a,t){return a.filter(function(l){return l.to_status===t}).length},
+  stk=scope.map(function(x){var a=CT.filter(function(c){return c.station_id===x.id});return pRow([esc(x.name),n(a,"full"),n(a,"use"),n(a,"empty"),a.length])});
+  if(scope.length>1)stk.push(pRow(["<b>Total</b>",n(cs,"full"),n(cs,"use"),n(cs,"empty"),cs.length]));
+  var onhand=cs.reduce(function(a,c){return a+(c.status==="full"?cap(c.station_id):c.status==="use"?cap(c.station_id)/2:0)},0),r=rate(),f=n(cs,"full"),
+  est=[["Water on hand now (Partial counted as half)","about "+Math.round(onhand)+" L"],["Containers finished per day (last 7 days)",r?r.toFixed(1):"Not enough data"],["Days until full stock runs out",r&&f?"about "+(f/r).toFixed(1)+" days":r?"0 days":"Not enough data"]].map(function(x){return pRow(x)}),
+  act=[["Different containers used",d.used],["Not used (of "+d.n+" containers now)",d.idle],["Started using (Partial)",d.c.use],["Finished (Way sulod)",d.c.empty],["Refilled (Naa pay sulod)",d.c.full],["Water used (finished x size)","about "+d.L+" L"]].map(function(x){return pRow(x)}),
+  bk="";
+  if(d.m!=="day"){var kk=d.m==="year"?"month":"day",g={};d.ev.forEach(function(l){var x=dkey(T(l),kk);(g[x]=g[x]||[]).push(l)});
+    bk='<h2>'+(d.m==="year"?"Month by month":"Day by day")+'</h2>'+pTable([d.m==="year"?"Month":"Date","Started","Finished","Refilled","Water used"],Object.keys(g).sort().map(function(x){var a=g[x];return pRow([x,cnt(a,"use"),cnt(a,"empty"),cnt(a,"full"),Math.round(liters(a))+" L"])}),"No records for this period.")}
+  var iss=IS.filter(function(i){return inSel(i)&&(i.status!=="fixed"||dkey(Date.parse(i.created_at),d.m)===d.v)}).map(function(i){
+    return pRow([fmt(i.created_at),esc(sName(i.station_id)),i.kind==="damage"?"Damage":"Issue",esc(i.note||"(no note)"),esc(i.user_name||""),i.status==="fixed"?"Fixed"+(i.fixed_by?" by "+esc(i.fixed_by):"")+(i.fixed_at?" on "+fmt(i.fixed_at):""):"<b>Open</b>"])}),
+  ent=d.ev.slice().sort(function(x,y){return T(x)-T(y)}).map(function(l,i){return pRow([i+1,fmt(l.at),esc(sName(l.station_id)),esc(l.container_name),LBL[l.to_status],esc(l.user_name||""),esc((l.note||"")+(l.edited?" (revised by "+(l.edited_by||"")+")":""))])});
+  $("print").innerHTML='<h1>Water Container Report</h1><p><b>'+(sel==="all"?"All stations":esc(sName(+sel)))+'</b> · '+({day:"Day",month:"Month",year:"Year"}[d.m])+': '+esc(d.v)+'<br>Prepared by '+esc(ME)+' on '+fmt(Date.now())+'</p>'
+    +'<h2>Current stock</h2>'+pTable(["Station","Naa pay sulod","Partial","Way sulod","Total"],stk,"No containers.")
+    +pTable(["Stock estimate","Value"],est,"")
+    +'<h2>Activity in this period</h2>'+pTable(["Item","Count"],act,"")
+    +(sel==="all"&&ST.length>1?'<h2>By station</h2>'+byStation(d.ev):"")+bk
+    +'<h2>Station problems</h2>'+pTable(["Reported","Station","Type","What happened","By","Status"],iss,"No station problems in this period.")
+    +'<h2 class="pb">All entries ('+d.ev.length+')</h2>'+pTable(["#","Date and time","Station","Container","Status","By","Note"],ent,"No records for this period.")
+    +'<div class="sig"><div>Prepared by: '+esc(ME)+'</div><div>Checked by:</div></div>';
+  window.print()};
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
