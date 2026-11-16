@@ -44,6 +44,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .err{color:var(--warn);min-height:1.4em}
 #print{display:none}
 @media print{body{background:#fff!important}body>*:not(#print){display:none!important}#print{display:block;color:#000;background:#fff;font:13px/1.4 Figtree,Arial,sans-serif;padding:8px}#print h1{font-size:24px}#print .cmp td,#print .cmp th{border-bottom:1px solid #888}}
+.tag{font-size:12px;font-weight:600;border-radius:6px;padding:1px 7px;background:var(--warnbg);color:var(--warn);margin-right:4px}.tag.ok{background:var(--line);color:var(--mute)}
+label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var(--ink)}label.chk input{width:18px;height:18px;padding:0}
 </style>
 </head>
 <body>
@@ -69,6 +71,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
     <div class="split"><span><i class="dot" style="background:var(--full)"></i><span id="nFull">0</span> full</span><span><i class="dot" style="background:var(--empty)"></i><span id="nEmpty">0</span> empty</span></div></div>
 </section>
 <div id="alert"></div><section class="est" id="est"></section>
+<div id="issueAlert"></div>
 
 <section class="panel"><h2>Add containers</h2>
   <div class="row"><label>Station<select id="ast"></select></label><label>How many<input id="qty" type="number" min="1" max="100" value="1"></label>
@@ -85,6 +88,16 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 
 <section class="panel"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">History</h2><span><button class="ghost" id="csv">Download CSV</button> <button class="ghost" id="undo">Undo last change</button></span></div>
   <ul class="log" id="log"></ul></section>
+
+<section class="panel" id="issuePanel"><h2>Station issues and email alerts</h2>
+  <p class="sub" style="margin-top:0">Report a problem or damage at a refilling station. An email is sent automatically.</p>
+  <div class="row"><label>Station<select id="istn"></select></label><label>Type<select id="ikind"><option value="issue">Issue</option><option value="damage">Damage</option></select></label><label style="flex:1;min-width:160px">What happened?<input id="inote" maxlength="200" placeholder="Example: no water coming out"></label><button id="ireport">Report</button></div>
+  <div class="err" id="imsg"></div>
+  <ul class="log" id="ilist" style="margin-top:6px"></ul>
+  <h2 style="margin-top:18px;font-size:17px">Email automatically when</h2>
+  <div class="row"><label class="chk"><input type="checkbox" id="pf_on_issue"> a problem or damage is reported</label><label class="chk"><input type="checkbox" id="pf_on_half"> a container becomes half used (in use)</label><label class="chk"><input type="checkbox" id="pf_on_empty"> a container is empty</label></div>
+  <div class="row" style="margin-top:12px"><button class="ghost" id="imail">Email report now</button></div>
+</section>
 
 <section class="panel"><h2>New stock</h2>
   <p class="sub" style="margin-top:0">Got a new batch? This removes the current containers of the selected station from the list so you can add new ones. All history stays in your reports.</p>
@@ -200,6 +213,53 @@ $("pr").onclick=function(){var d=repData(),rows=d.ev.slice().reverse().slice(0,4
   window.print()};
 $("csv").onclick=function(){var r=["Date and time,Station,Container,Status,Logged by,Note"].concat(LG.filter(inSel).slice().reverse().map(function(l){return [new Date(l.at).toLocaleString(),sName(l.station_id),l.container_name,LBL[l.to_status],l.user_name||"",l.note||""].map(function(x){return '"'+String(x).replace(/"/g,'""')+'"'}).join(",")}));
   try{var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([r.join("\n")],{type:"text/csv"}));a.download="water-log-history.csv";document.body.appendChild(a);a.click();a.remove()}catch(e){}};
+
+/* issues and email alerts (added) */
+var IS=[],PF={on_issue:true,on_half:true,on_empty:true},hasIssues=true;
+function say(t,ok){var m=$("imsg");m.textContent=t;m.style.color=ok?"var(--full)":""}
+async function loadExtra(){
+  var a=await sb.from("issues").select("*").order("created_at",{ascending:false}).limit(200);
+  if(a.error){hasIssues=false;renderIssues();return}
+  hasIssues=true;IS=a.data||[];
+  var p=await sb.from("alert_prefs").select("*").eq("id",1).maybeSingle();if(p.data)PF=p.data;
+  renderIssues()}
+function renderIssues(){
+  if(!$("issuePanel"))return;
+  if(!hasIssues){$("ilist").innerHTML='<li class="empty-msg">Issue reports are not set up yet. Run the setup SQL in Supabase first.</li>';$("issueAlert").innerHTML="";return}
+  var av=$("istn").value,opts=ST.map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+'</option>'}).join("");
+  $("istn").innerHTML=opts;if(av&&$("istn").querySelector('option[value="'+av+'"]'))$("istn").value=av;else if(sel!=="all")$("istn").value=sel;
+  ["on_issue","on_half","on_empty"].forEach(function(k){$("pf_"+k).checked=PF[k]!==false});
+  var L=IS.filter(inSel),op=L.filter(function(i){return i.status!=="fixed"}),done=L.filter(function(i){return i.status==="fixed"}).slice(0,8);
+  $("issueAlert").innerHTML=op.length?'<div class="alert">'+op.length+' open station problem'+(op.length===1?'':'s')+'. See "Station issues" below.</div>':"";
+  $("ilist").innerHTML=op.concat(done).map(function(i){var fx=i.status==="fixed";
+    return '<li><span><b class="tag'+(fx?' ok':'')+'">'+(fx?'Fixed':i.kind==="damage"?'Damage':'Issue')+'</b>'+(sel==="all"?esc(sName(i.station_id))+' · ':'')+esc(i.note||"(no note)")+(i.user_name?' · '+esc(i.user_name):'')+(fx&&i.fixed_by?' (fixed by '+esc(i.fixed_by)+')':'')+'</span><span><time>'+fmt(i.created_at)+'</time>'+(fx?'':' <button class="ghost" data-fix="'+i.id+'">Mark fixed</button>')+'</span></li>'}).join("")||'<li class="empty-msg">No station problems reported.</li>'}
+var _render=render;render=function(){_render();renderIssues()};
+var _load=load;load=async function(){await _load();await loadExtra()};
+$("ireport").onclick=async function(){
+  var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
+  var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
+  b.disabled=false;
+  if(r.error){say("Could not save the report.",false);return}
+  $("inote").value="";say("Reported. The email alert is sent automatically if it is turned on.",true);loadExtra()};
+$("ilist").onclick=async function(e){var id=e.target.getAttribute("data-fix");if(!id)return;e.target.disabled=true;
+  await sb.from("issues").update({status:"fixed",fixed_at:new Date().toISOString(),fixed_by:ME}).eq("id",id);loadExtra()};
+["on_issue","on_half","on_empty"].forEach(function(k){$("pf_"+k).onchange=async function(){var o={},c=this.checked;o[k]=c;
+  var r=await sb.from("alert_prefs").update(o).eq("id",1);if(r.error){say("Could not save the alert setting.",false);this.checked=!c}else PF[k]=c}});
+$("imail").onclick=async function(){
+  var b=this,t=[],scope=ST.filter(function(s){return inSel({station_id:s.id})});b.disabled=true;
+  t.push("WATER STATION REPORT",fmt(Date.now()),"");
+  scope.forEach(function(s){var c=CT.filter(function(x){return x.station_id===s.id}),n=function(k){return c.filter(function(x){return x.status===k}).length};
+    t.push(s.name+": "+n("full")+" full, "+n("use")+" in use (half used), "+n("empty")+" empty")});
+  var dk=dkey(Date.now(),"day"),td=LG.filter(inSel).filter(function(l){return dkey(T(l),"day")===dk}),k=function(x){return td.filter(function(l){return l.to_status===x}).length};
+  t.push("","Today: "+k("use")+" started, "+k("empty")+" finished, "+k("full")+" refilled");
+  var op=IS.filter(function(i){return i.status!=="fixed"&&inSel(i)});
+  t.push("",op.length?"OPEN PROBLEMS ("+op.length+"):":"No open problems.");
+  op.forEach(function(i){t.push("- "+(i.kind==="damage"?"Damage":"Issue")+" at "+sName(i.station_id)+": "+(i.note||"(no note)")+" ("+(i.user_name||"")+", "+fmt(i.created_at)+")")});
+  t.push("","Sent by "+ME);
+  var r=await sb.rpc("email_report",{body:t.join("\n")});b.disabled=false;
+  if(r.error)say("Could not send. Check that the email setup is finished.",false);
+  else if(r.data===true)say("Report sent. Check the email inbox in a minute.",true);
+  else say("Email is not set up yet. Finish the setup steps first.",false)};
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
