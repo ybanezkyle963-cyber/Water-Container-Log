@@ -97,6 +97,14 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
   <div class="row"><label>Show by<select id="rmode"><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select></label><label>Period<input id="rval"></label><button class="ghost" id="pr">Print report</button></div>
   <div id="rep" style="margin-top:14px"></div></section>
 
+<section class="panel" id="meterPanel"><h2>Electricity meter (kWh)</h2>
+  <p class="sub" style="margin-top:0">Write the number on the meter once a day. The app computes how many kWh were used since the last reading.</p>
+  <div class="row"><label>Meter<select id="mstn"></select></label><label>Date<input type="date" id="mdate"></label><label>Meter reading (kWh)<input id="mval" inputmode="decimal" placeholder="Example: 1234.5" style="width:150px"></label><label style="flex:1;min-width:140px">Note (optional)<input id="mnote" maxlength="100"></label><button id="msave">Save reading</button></div>
+  <div class="err" id="mmsg"></div>
+  <div class="acg" id="mcards"></div>
+  <div style="overflow-x:auto"><div id="mlist"></div></div>
+</section>
+
 <section class="panel"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">History</h2><span><button class="ghost" id="csv">Download CSV</button> <button class="ghost" id="undo">Undo last change</button></span></div>
   <ul class="log" id="log"></ul></section>
 
@@ -108,14 +116,6 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
   <h2 style="margin-top:18px;font-size:17px">Email automatically when</h2>
   <div class="row"><label class="chk"><input type="checkbox" id="pf_on_issue"> a problem or damage is reported</label><label class="chk"><input type="checkbox" id="pf_on_half"> a container becomes Partial (half used)</label><label class="chk"><input type="checkbox" id="pf_on_empty"> a container is Way sulod (empty)</label></div>
   <div class="row" style="margin-top:12px"><button class="ghost" id="imail">Email report now</button></div>
-</section>
-
-<section class="panel" id="meterPanel"><h2>Electricity meter (kWh)</h2>
-  <p class="sub" style="margin-top:0">Write the number on the meter once a day. The app computes how many kWh were used since the last reading.</p>
-  <div class="row"><label>Meter<select id="mstn"></select></label><label>Date<input type="date" id="mdate"></label><label>Meter reading (kWh)<input id="mval" inputmode="decimal" placeholder="Example: 1234.5" style="width:150px"></label><label style="flex:1;min-width:140px">Note (optional)<input id="mnote" maxlength="100"></label><button id="msave">Save reading</button></div>
-  <div class="err" id="mmsg"></div>
-  <div class="acg" id="mcards"></div>
-  <div style="overflow-x:auto"><div id="mlist"></div></div>
 </section>
 
 <section class="panel"><h2>New stock</h2>
@@ -281,7 +281,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 11 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 12 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
