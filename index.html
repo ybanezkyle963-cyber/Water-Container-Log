@@ -110,6 +110,14 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
   <div class="row" style="margin-top:12px"><button class="ghost" id="imail">Email report now</button></div>
 </section>
 
+<section class="panel" id="meterPanel"><h2>Electricity meter (kWh)</h2>
+  <p class="sub" style="margin-top:0">Write the number on the meter once a day. The app computes how many kWh were used since the last reading.</p>
+  <div class="row"><label>Meter<select id="mstn"></select></label><label>Date<input type="date" id="mdate"></label><label>Meter reading (kWh)<input id="mval" inputmode="decimal" placeholder="Example: 1234.5" style="width:150px"></label><label style="flex:1;min-width:140px">Note (optional)<input id="mnote" maxlength="100"></label><button id="msave">Save reading</button></div>
+  <div class="err" id="mmsg"></div>
+  <div class="acg" id="mcards"></div>
+  <div style="overflow-x:auto"><div id="mlist"></div></div>
+</section>
+
 <section class="panel"><h2>New stock</h2>
   <p class="sub" style="margin-top:0">Got a new batch? This removes the current containers of the selected station from the list so you can add new ones. All history stays in your reports.</p>
   <button class="ghost" id="reset">Start new stock</button></section>
@@ -259,7 +267,7 @@ function renameUI(){$("cFull").textContent=$("nFull").textContent;$("cEmpty").te
 function sortShelf(){var sh=$("shelf"),o={full:0,use:1,empty:2},k=[].slice.call(sh.querySelectorAll(".jug"));
   k.map(function(el,i){return [el,i]}).sort(function(a,b){return (o[a[0].className.split(" ")[1]]-o[b[0].className.split(" ")[1]])||(a[1]-b[1])}).forEach(function(x){sh.appendChild(x[0])});
   var tb=$("tabs"),od={all:0,full:1,use:2,empty:3};[].slice.call(tb.querySelectorAll("button[data-f]")).sort(function(a,b){return od[a.getAttribute("data-f")]-od[b.getAttribute("data-f")]}).forEach(function(x){tb.appendChild(x)})}
-var _render=render;render=function(){_render();renameUI();sortShelf();renderIssues()};
+var _render=render;render=function(){_render();renameUI();sortShelf();renderIssues();renderMeter()};
 /* always up to date (added): live updates + refresh when the app is opened again */
 var rtOK=false,lastOK=0,_load=load,loading=false,again=false,rtCh=null,rtT=null,pend=null,lastTouch=0,started=false;
 load=async function(){if(loading){again=true;return}loading=true;try{await _load();await loadExtra();lastOK=Date.now();ensureLive();stat()}finally{loading=false}if(again){again=false;load()}};
@@ -273,7 +281,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 10 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 11 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -322,7 +330,7 @@ function stockBlock(){
     +'<h2>Activity in this period ('+esc(d.v)+')</h2>'
     +(d.ev.length?'':'<p class="empty-msg" style="padding:0 0 8px">No activity in this period yet. Activity is counted when someone adds jars or presses Start using, Mark empty, or Refilled.</p>')
     +'<div class="acg">'+actList(d).map(function(a,k){return '<div class="ac ac-'+CL[k]+'"><strong>'+a[1]+'</strong><b>'+a[0]+'</b><small>'+a[2]+'</small></div>'}).join("")+'</div>'
-    +'<h2>By station</h2>'+stationAct(d)+periodAct(d)+'</div>'}
+    +'<h2>By station</h2>'+stationAct(d)+periodAct(d)+(hasMeter?mSummary(d):'')+'</div>'}
 var repObs=new MutationObserver(function(){var r=$("rep");repObs.disconnect();
   try{if(!r.querySelector("[data-stock]"))r.insertAdjacentHTML("afterbegin",stockBlock());[].forEach.call(r.children,function(c){if(!c.hasAttribute("data-stock"))c.style.display="none"})}catch(e){}
   repObs.observe(r,{childList:true})});
@@ -363,9 +371,64 @@ $("pr").onclick=function(){
     +'<h2>Activity in this period</h2>'+pTable(["Item","Count","Meaning"],act,"")
     +'<h2>By station</h2>'+stationAct(d)+bk
     +'<h2>Station problems</h2>'+pTable(["Reported","Station","Type","What happened","By","Status"],iss,"No station problems in this period.")
-    +'<h2 class="pb">All entries ('+d.ev.length+')</h2>'+pTable(["#","Date and time","Station","Container","Status","By","Note"],ent,"No records for this period.")
+    +(hasMeter?meterPrint(d):'')+'<h2 class="pb">All entries ('+d.ev.length+')</h2>'+pTable(["#","Date and time","Station","Container","Status","By","Note"],ent,"No records for this period.")
     +'<div class="sig"><div>Prepared by: '+esc(ME)+'</div><div>Checked by:</div></div>';
   window.print()};
+
+/* electricity meter (added) */
+var MR=[],hasMeter=true;
+function mName(id){return id==null?"Shared meter":sName(id)}
+function fq(x){return x==null?"–":String(Math.round(x*100)/100)}
+function todayYmd(){var d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+function mRecs(){var by={},out=[];
+  MR.forEach(function(r){var k=r.station_id==null?"s":r.station_id;(by[k]=by[k]||[]).push(r)});
+  Object.keys(by).forEach(function(k){var a=by[k].slice().sort(function(x,y){return x.read_date<y.read_date?-1:x.read_date>y.read_date?1:0}),prev=null;
+    a.forEach(function(r){var v=+r.reading,o={id:r.id,station_id:r.station_id,date:r.read_date,reading:v,note:r.note,by:r.user_name,kwh:null,days:null,per:null,flag:""};
+      if(prev){var dd=Math.round((Date.parse(r.read_date+"T00:00:00Z")-Date.parse(prev.d+"T00:00:00Z"))/864e5),u=v-prev.v;
+        if(u<0)o.flag="Check: lower than last reading";else{o.kwh=u;o.days=dd;o.per=dd>0?u/dd:null}}
+      else o.flag="First reading";
+      out.push(o);prev={d:r.read_date,v:v}})});
+  return out}
+function mScope(){return mRecs().filter(function(r){return inSel({station_id:r.station_id})})}
+function mUsed(r){return r.kwh!=null?fq(r.kwh):'<small>'+r.flag+'</small>'}
+function mSay(t,ok){var m=$("mmsg");m.textContent=t;m.style.color=ok?"var(--full)":""}
+function renderMeter(){
+  if(!$("meterPanel"))return;
+  if(!hasMeter){$("mcards").innerHTML="";$("mlist").innerHTML='<p class="empty-msg">Electricity meter is not set up yet. Run the setup SQL in Supabase first.</p>';return}
+  var av=$("mstn").value,opts=ST.map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+'</option>'}).join("")+'<option value="s">Shared meter (all stations)</option>';
+  $("mstn").innerHTML=opts;if(av&&$("mstn").querySelector('option[value="'+av+'"]'))$("mstn").value=av;else if(sel!=="all")$("mstn").value=sel;
+  if(!$("mdate").value)$("mdate").value=todayYmd();
+  var a=mScope(),td=todayYmd(),mo=td.slice(0,7),w=new Date();w.setDate(w.getDate()-6);var w7=w.getFullYear()+"-"+pad(w.getMonth()+1)+"-"+pad(w.getDate());
+  var tk=0,has=false,mk=0,k7=0,d7=0,last=null;
+  a.forEach(function(r){if(r.kwh!=null){if(r.date===td){tk+=r.kwh;has=true}if(r.date.slice(0,7)===mo)mk+=r.kwh;if(r.date>=w7){k7+=r.kwh;d7+=r.days}}
+    if(!last||r.date>last.date||(r.date===last.date&&r.id>last.id))last=r});
+  var cards=[["Used today",has?fq(tk)+" kWh":"No reading yet","Today's reading minus the last one"],["Used this month",fq(mk)+" kWh","Total of this month's readings"],["Average per day",d7?fq(k7/d7)+" kWh":"Not enough data","Last 7 days"],["Last reading",last?fq(last.reading)+" kWh":"None","Last entry: "+(last?last.date+" · "+esc(mName(last.station_id)):"-")]];
+  $("mcards").innerHTML=cards.map(function(c){return '<div class="ac"><strong style="font-size:22px">'+c[1]+'</strong><b>'+c[0]+'</b><small>'+c[2]+'</small></div>'}).join("");
+  var L=a.slice().sort(function(x,y){return x.date<y.date?1:x.date>y.date?-1:y.id-x.id}).slice(0,30);
+  $("mlist").innerHTML=pTable(["Date","Meter","Reading (kWh)","Used (kWh)","Days","kWh per day","By",""],L.map(function(r){return pRow([r.date,esc(mName(r.station_id)),fq(r.reading),mUsed(r),r.days==null?"–":r.days,fq(r.per),esc(r.by||""),'<button class="ghost" data-medit="'+r.id+'">Edit</button> <button class="ghost" data-mdel="'+r.id+'">Delete</button>'])}),"No meter readings yet.")+(a.length>30?'<p class="sub">Showing the latest 30. The printed report shows every reading in the period.</p>':"")}
+var _lx=loadExtra;loadExtra=async function(){await _lx();var m=await sb.from("meter_readings").select("*").order("read_date",{ascending:false}).limit(2000);
+  if(m.error){hasMeter=false}else{hasMeter=true;MR=m.data||[]}renderMeter()};
+$("msave").onclick=async function(){var b=this,v=parseFloat(String($("mval").value).replace(",",".")),d=$("mdate").value,sv=$("mstn").value,sid=sv==="s"?null:+sv;
+  if(!d||!isFinite(v)||v<0){mSay("Enter the date and the meter reading.",false);return}
+  var before=mRecs().filter(function(r){return r.station_id===sid&&r.date<d}).sort(function(x,y){return x.date<y.date?1:-1})[0];
+  if(before&&v<before.reading&&!confirm("This reading is lower than the last one ("+fq(before.reading)+" kWh on "+before.date+"). Save anyway?"))return;
+  b.disabled=true;var r=await sb.from("meter_readings").insert({station_id:sid,read_date:d,reading:v,note:$("mnote").value.trim().slice(0,100),user_id:UID,user_name:ME});b.disabled=false;
+  if(r.error){mSay(r.error.code==="23505"?"This meter already has a reading for that date. Use Edit in the list.":"Could not save. Check that the electricity setup SQL was run.",false);return}
+  $("mval").value="";$("mnote").value="";mSay("Saved.",true);loadExtra()};
+$("mlist").onclick=async function(e){var t=e.target,ed=t.getAttribute("data-medit"),dl=t.getAttribute("data-mdel");
+  if(ed){var cur=MR.filter(function(r){return String(r.id)===ed})[0];if(!cur)return;var nv=prompt("New meter reading (kWh)",cur.reading);if(nv===null)return;nv=parseFloat(String(nv).replace(",","."));
+    if(!isFinite(nv)||nv<0){mSay("That reading is not valid.",false);return}
+    var r=await sb.from("meter_readings").update({reading:nv}).eq("id",ed);if(r.error)mSay("Could not change the reading.",false);else{mSay("Reading changed.",true);loadExtra()}}
+  else if(dl){if(!confirm("Delete this reading?"))return;var r2=await sb.from("meter_readings").delete().eq("id",dl);if(r2.error)mSay("Could not delete the reading.",false);else{mSay("Reading deleted.",true);loadExtra()}}};
+/* electricity in the usage report and the printed report (added) */
+function mInPeriod(d){return mRecs().filter(function(r){return inSel({station_id:r.station_id})&&dkey(Date.parse(r.date+"T12:00:00"),d.m)===d.v})}
+function mSummary(d){var a=mInPeriod(d),by={};a.forEach(function(r){var k=r.station_id==null?"s":r.station_id;(by[k]=by[k]||[]).push(r)});
+  var tk=0,tp=0,rows=Object.keys(by).map(function(k){var g=by[k],kw=0,dy=0;g.forEach(function(r){if(r.kwh!=null){kw+=r.kwh;dy+=r.days}});tk+=kw;if(dy)tp+=kw/dy;return [esc(mName(k==="s"?null:+k)),g.length,fq(kw)+" kWh",dy?fq(kw/dy)+" kWh":"–"]});
+  if(rows.length>1)rows.push(["<b>Total</b>",a.length,"<b>"+fq(tk)+" kWh</b>",tp?fq(tp)+" kWh":"–"]);
+  return '<h2>Electricity used (kWh)</h2>'+pTable(["Meter","Readings","kWh used","Average per day"],rows.map(function(x){return pRow(x)}),"No meter reading in this period.")
+    +'<p class="sub">kWh used = a reading minus the previous reading of the same meter, counted on the date of the newer reading.</p>'}
+function meterPrint(d){var a=mInPeriod(d).sort(function(x,y){return x.date<y.date?-1:x.date>y.date?1:x.id-y.id});
+  return mSummary(d)+(a.length?pTable(["Date","Meter","Reading (kWh)","Used (kWh)","Days","kWh per day","By"],a.map(function(r){return pRow([r.date,esc(mName(r.station_id)),fq(r.reading),r.kwh!=null?fq(r.kwh):r.flag,r.days==null?"–":r.days,fq(r.per),esc(r.by||"")])}),""):"")}
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
