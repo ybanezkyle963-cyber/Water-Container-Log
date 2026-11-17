@@ -57,6 +57,17 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
 .ac strong{display:block;font:800 30px/1.1 "Bricolage Grotesque",sans-serif}.ac b{display:block;font-weight:600}.ac small{color:var(--mute)}
 .ac-add{border-left-color:var(--mute)}.ac-use{border-left-color:var(--use)}.ac-use strong{color:var(--use)}.ac-empty{border-left-color:var(--empty)}.ac-empty strong{color:var(--empty)}.ac-full strong{color:var(--full)}
 #rep h2{font-size:17px;margin:14px 0 6px}
+#nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:var(--bg);padding:8px 0;margin:0 0 10px;border-bottom:1px solid var(--line)}
+#navBtn{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+#navBtn .burger{font-size:20px;line-height:1}#navBtn .chev{margin-left:auto;transition:transform .15s}#navBtn[aria-expanded=true] .chev{transform:rotate(180deg)}
+#navMenu{display:none;position:absolute;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.2);flex-direction:column;gap:4px}
+#navMenu.open{display:flex}
+#navMenu button{background:transparent;color:var(--ink);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px}
+#navMenu button[aria-current=page]{background:var(--ink);color:var(--bg)}
+.nb{background:var(--warn);color:var(--bg);border-radius:999px;font-size:12px;padding:1px 8px;font-style:normal}
+#issueAlert .alert{cursor:pointer}
+.navhide{display:none!important}
+@media (min-width:760px){#navBtn{display:none}#navMenu{display:flex;position:static;flex-direction:row;flex-wrap:wrap;border:0;box-shadow:none;background:transparent;padding:0}#navMenu button{border:1px solid var(--line)}}
 </style>
 </head>
 <body>
@@ -75,6 +86,8 @@ label.chk{flex-direction:row;align-items:center;gap:8px;font-size:14px;color:var
 <main id="app" hidden>
 <div class="top"><div><h1>Water container log</h1><p class="sub" style="margin:4px 0 0">Signed in as <b id="me"></b> <button class="ghost" id="out" style="padding:3px 9px;font-size:13px">Sign out</button></p></div>
   <label>Station<select id="sel"></select></label></div>
+<nav id="nav" aria-label="Sections"><button id="navBtn" aria-expanded="false" aria-controls="navMenu"><span class="burger" aria-hidden="true">☰</span><span id="navCur">Containers</span><span class="chev" aria-hidden="true">▾</span></button>
+  <div id="navMenu"><button data-go="containers">Containers</button><button data-go="reports">Reports</button><button data-go="electricity">Electricity</button><button data-go="history">History</button><button data-go="issues">Issues <i class="nb" id="nbIssues" hidden></i></button><button data-go="stock">New stock</button></div></nav>
 <div class="err" id="msg"></div>
 <section class="hero" aria-live="polite">
   <div class="big use"><b id="nUse">0</b><span>In use</span></div>
@@ -249,7 +262,7 @@ function renderIssues(){
   $("istn").innerHTML=opts;if(av&&$("istn").querySelector('option[value="'+av+'"]'))$("istn").value=av;else if(sel!=="all")$("istn").value=sel;
   ["on_issue","on_half","on_empty"].forEach(function(k){$("pf_"+k).checked=PF[k]!==false});
   var L=IS.filter(inSel),op=L.filter(function(i){return i.status!=="fixed"}),done=L.filter(function(i){return i.status==="fixed"}).slice(0,8);
-  $("issueAlert").innerHTML=op.length?'<div class="alert">'+op.length+' open station problem'+(op.length===1?'':'s')+'. See "Station issues" below.</div>':"";
+  $("issueAlert").innerHTML=op.length?'<div class="alert">'+op.length+' open station problem'+(op.length===1?'':'s')+'. Tap here to open Issues.</div>':"";
   $("ilist").innerHTML=op.concat(done).map(function(i){var fx=i.status==="fixed";
     return '<li><span><b class="tag'+(fx?' ok':'')+'">'+(fx?'Fixed':i.kind==="damage"?'Damage':'Issue')+'</b>'+(sel==="all"?esc(sName(i.station_id))+' · ':'')+esc(i.note||"(no note)")+(i.user_name?' · '+esc(i.user_name):'')+(fx&&i.fixed_by?' (fixed by '+esc(i.fixed_by)+')':'')+'</span><span><time>'+fmt(i.created_at)+'</time>'+(fx?'':' <button class="ghost" data-fix="'+i.id+'">Mark fixed</button>')+'</span></li>'}).join("")||'<li class="empty-msg">No station problems reported.</li>'}
 /* status names (added): rename only the words shown on screen */
@@ -267,7 +280,7 @@ function renameUI(){$("cFull").textContent=$("nFull").textContent;$("cEmpty").te
 function sortShelf(){var sh=$("shelf"),o={full:0,use:1,empty:2},k=[].slice.call(sh.querySelectorAll(".jug"));
   k.map(function(el,i){return [el,i]}).sort(function(a,b){return (o[a[0].className.split(" ")[1]]-o[b[0].className.split(" ")[1]])||(a[1]-b[1])}).forEach(function(x){sh.appendChild(x[0])});
   var tb=$("tabs"),od={all:0,full:1,use:2,empty:3};[].slice.call(tb.querySelectorAll("button[data-f]")).sort(function(a,b){return od[a.getAttribute("data-f")]-od[b.getAttribute("data-f")]}).forEach(function(x){tb.appendChild(x)})}
-var _render=render;render=function(){_render();renameUI();sortShelf();renderIssues();renderMeter()};
+var _render=render;render=function(){_render();renameUI();sortShelf();renderIssues();renderMeter();navBadge()};
 /* always up to date (added): live updates + refresh when the app is opened again */
 var rtOK=false,lastOK=0,_load=load,loading=false,again=false,rtCh=null,rtT=null,pend=null,lastTouch=0,started=false;
 load=async function(){if(loading){again=true;return}loading=true;try{await _load();await loadExtra();lastOK=Date.now();ensureLive();stat()}finally{loading=false}if(again){again=false;load()}};
@@ -281,7 +294,7 @@ function ensureLive(){if(started)return;started=true;
   window.addEventListener("focus",refresh);window.addEventListener("online",refresh);window.addEventListener("pageshow",refresh);
   try{rtCh=sb.channel("wl-live");["containers","logs","stations","issues"].forEach(function(t){rtCh.on("postgres_changes",{event:"*",schema:"public",table:t},function(){clearTimeout(rtT);rtT=setTimeout(refresh,500)})});rtCh.subscribe(function(st){rtOK=st==="SUBSCRIBED";stat()})}catch(e){}}
 (function(){var m=$("msg"),d=document.createElement("div");d.id="liveStat";d.className="sub";d.style.cssText="font-size:12px;margin:0 0 8px";m.parentNode.insertBefore(d,m.nextSibling)})();
-function stat(){var d=$("liveStat");if(d)d.textContent="App version 12 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
+function stat(){var d=$("liveStat");if(d)d.textContent="App version 13 · Updated "+(lastOK?new Date(lastOK).toLocaleTimeString():"-")+" · "+(rtOK?"Live updates ON":"Refreshing every 10 seconds")}
 $("ireport").onclick=async function(){
   var sid=+$("istn").value,b=this;if(!sid)return;b.disabled=true;
   var r=await sb.from("issues").insert({station_id:sid,kind:$("ikind").value,note:$("inote").value.trim().slice(0,200),user_id:UID,user_name:ME});
@@ -429,6 +442,22 @@ function mSummary(d){var a=mInPeriod(d),by={};a.forEach(function(r){var k=r.stat
     +'<p class="sub">kWh used = a reading minus the previous reading of the same meter, counted on the date of the newer reading.</p>'}
 function meterPrint(d){var a=mInPeriod(d).sort(function(x,y){return x.date<y.date?-1:x.date>y.date?1:x.id-y.id});
   return mSummary(d)+(a.length?pTable(["Date","Meter","Reading (kWh)","Used (kWh)","Days","kWh per day","By"],a.map(function(r){return pRow([r.date,esc(mName(r.station_id)),fq(r.reading),r.kwh!=null?fq(r.kwh):r.flag,r.days==null?"–":r.days,fq(r.per),esc(r.by||"")])}),""):"")}
+
+/* navigation menu (added) */
+var SECS={containers:"Containers",reports:"Reports",electricity:"Electricity",history:"History",issues:"Issues",stock:"New stock"},curSec="containers";
+var SECEL={containers:[document.querySelector(".hero"),$("est"),$("add").closest("section"),$("shelf").closest("section")],reports:[$("rep").closest("section")],electricity:[$("meterPanel")],history:[$("log").closest("section")],issues:[$("issuePanel")],stock:[$("reset").closest("section")]};
+function closeNav(){$("navMenu").classList.remove("open");$("navBtn").setAttribute("aria-expanded","false")}
+function goSec(k,noScroll){if(!SECS[k])k="containers";curSec=k;
+  Object.keys(SECEL).forEach(function(n){SECEL[n].forEach(function(e){if(e)e.classList.toggle("navhide",n!==k)})});
+  [].forEach.call($("navMenu").querySelectorAll("button"),function(b){if(b.getAttribute("data-go")===k)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+  $("navCur").textContent=SECS[k];closeNav();try{localStorage.setItem("wl_sec",k)}catch(e){}if(!noScroll)window.scrollTo(0,0)}
+function navBadge(){var n=hasIssues?IS.filter(function(i){return i.status!=="fixed"&&inSel(i)}).length:0,b=$("nbIssues");b.textContent=n;b.hidden=!n}
+$("navBtn").onclick=function(e){e.stopPropagation();var o=!$("navMenu").classList.contains("open");$("navMenu").classList.toggle("open",o);this.setAttribute("aria-expanded",String(o))};
+$("navMenu").onclick=function(e){var b=e.target.closest("button[data-go]");if(b)goSec(b.getAttribute("data-go"))};
+$("issueAlert").onclick=function(){goSec("issues")};
+document.addEventListener("click",function(e){if(!$("nav").contains(e.target))closeNav()});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeNav()});
+(function(){var v="containers";try{v=localStorage.getItem("wl_sec")||v}catch(e){}goSec(v,true)})();
 
 sb.auth.getSession().then(function(r){if(r.data&&r.data.session)init(r.data.session.user);else show("login")});
 })();
